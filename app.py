@@ -10,17 +10,24 @@ CHAT_ID = os.environ.get("CHAT_ID")
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-
     if not data or "message" not in data:
-        return "no message", 400
+        return "Error: No message key", 400
 
     text = data["message"]
-
-    requests.post(
+    
+    # Відправляємо запит і зберігаємо відповідь від Telegram
+    response = requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
             "chat_id": CHAT_ID,
             "text": text
         }
     )
-    return "ok"
+    
+    # Це виведе результат запиту в логи Railway
+    print(f"Telegram response: {response.text}")
+    
+    return response.text, response.status_code
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
