@@ -108,27 +108,27 @@ def calculate_smart_trail(df, sensitivity):
     return trail
 
 
-def find_crossover(df, lookback=2):
+def find_crossover(df):
     """
-    Шукаємо crossover на закритих свічках (виключаємо останню — вона ще формується).
-    lookback=2 означає перевіряємо свічки [-3] і [-2], де [-1] — поточна незакрита.
+    Точна репліка Pine Script: ta.crossover / ta.crossunder
+    buySignal  = close[i] > trail[i] AND close[i-1] <= trail[i-1]
+    sellSignal = close[i] < trail[i] AND close[i-1] >= trail[i-1]
+    Перевіряємо закриті свічки [-3] і [-2]. [-1] ігноруємо (незакрита).
     """
     n = len(df)
-    # Перевіряємо тільки закриті свічки: від -lookback-1 до -1 (не включаючи останню)
-    for offset in range(lookback + 1, 1, -1):
-        i  = n - offset      # закрита свічка
+    for i in [n - 2, n - 3]:
         if i < 1:
             continue
         c  = df["close"].iloc[i]
-        pc = df["close"].iloc[i-1]
+        pc = df["close"].iloc[i - 1]
         t  = df["trail"].iloc[i]
-        pt = df["trail"].iloc[i-1]
-        # Точний crossover: попередня свічка була по інший бік trail
+        pt = df["trail"].iloc[i - 1]
         if (c > t) and (pc <= pt):
-            return "BUY", i
+            return "BUY"
         if (c < t) and (pc >= pt):
-            return "SELL", i
-    return None, None
+            return "SELL"
+    return None
+
 
 
 def get_reversal_zones(df, pivot_len=5):
@@ -269,7 +269,7 @@ while True:
                 diag_no_data += 1
                 continue
 
-            side, sig_idx = find_crossover(df, lookback=SIGNAL_LOOKBACK)
+            side = find_crossover(df)
 
             if side is None:
                 diag_no_signal += 1
@@ -278,7 +278,7 @@ while True:
             diag_raw += 1
             c = df["close"].iloc[-1]
             t = df["trail"].iloc[-1]
-            print(f"  🔔 {symbol} {side} | свічка={sig_idx} c={c:.4f} trail={t:.4f}")
+            print(f"  🔔 {symbol} {side} c={c:.4f} trail={t:.4f}")
 
             # Перевірка активної угоди
             if symbol in active_trades:
