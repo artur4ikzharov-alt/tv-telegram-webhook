@@ -253,7 +253,8 @@ while True:
     diag_no_data   = 0
     diag_no_signal = 0
     diag_raw       = 0
-    diag_first_logged = False  # щоб перевірити що хоча б один символ обробився
+    diag_first_logged = False
+    order_checked  = False  # перевіряємо порядок свічок лише раз
 
     for symbol in symbols:
         try:
@@ -275,6 +276,18 @@ while True:
                 continue
 
             diag_first_logged = True  # дані є, далі нормальний потік
+
+            # Перевірка порядку свічок (один раз)
+            if not order_checked and "time" in df.columns:
+                order_checked = True
+                t0 = df["time"].iloc[0]
+                t1 = df["time"].iloc[-1]
+                print(f"  🕐 Порядок свічок: [0]={t0} → [-1]={t1} ({'зростає ✅' if t1 > t0 else 'спадає ❌ — треба reverse!'})")
+                # Показуємо останні 3 свічки для діагностики
+                for idx in [-3, -2, -1]:
+                    row = df.iloc[idx]
+                    trail_val = df["trail"].iloc[idx]
+                    print(f"    свічка[{idx}]: close={row['close']:.4f} trail={trail_val:.4f} {'▲' if row['close'] > trail_val else '▼'}")
 
             df["atr"]   = calculate_atr(df, ATR_LENGTH)
             df["trail"] = calculate_smart_trail(df, SENSITIVITY)
