@@ -21,7 +21,7 @@ TP4_PCT = 11.0
 SL_PCT  = 8.0
 MTF_MIN       = 2
 MTF_CACHE_TTL = 300
-SIGNAL_LOOKBACK = 2   # шукаємо crossover тільки на останніх 2 свічках (свіжі сигнали)
+SIGNAL_LOOKBACK = 2
 
 active_trades = {}
 mtf_cache     = {}
@@ -114,16 +114,14 @@ def find_crossover(df, lookback=2):
     lookback=2 означає перевіряємо свічки [-3] і [-2], де [-1] — поточна незакрита.
     """
     n = len(df)
-    # Перевіряємо тільки закриті свічки: від -lookback-1 до -1 (не включаючи останню)
     for offset in range(lookback + 1, 1, -1):
-        i  = n - offset      # закрита свічка
+        i  = n - offset
         if i < 1:
             continue
         c  = df["close"].iloc[i]
         pc = df["close"].iloc[i-1]
         t  = df["trail"].iloc[i]
         pt = df["trail"].iloc[i-1]
-        # Точний crossover: попередня свічка була по інший бік trail
         if (c > t) and (pc <= pt):
             return "BUY", i
         if (c < t) and (pc >= pt):
@@ -280,7 +278,6 @@ while True:
             t = df["trail"].iloc[-1]
             print(f"  🔔 {symbol} {side} | свічка={sig_idx} c={c:.4f} trail={t:.4f}")
 
-            # Перевірка активної угоди
             if symbol in active_trades:
                 tr = active_trades[symbol]
                 if tr["side"] == "BUY":
