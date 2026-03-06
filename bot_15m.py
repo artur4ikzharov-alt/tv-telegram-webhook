@@ -68,7 +68,7 @@ def get_klines(symbol, interval=None, limit=250):
     iv  = interval or INTERVAL
     url = f"https://contract.mexc.com/api/v1/contract/kline/{symbol}"
     r   = safe_get(url, params={"interval": iv, "limit": limit})
-    if not r or not r.get("success"):
+    if not r or r.get("success") not in (True, 1):
         return None
     df = pd.DataFrame(r["data"])
     if df.empty:
@@ -254,8 +254,8 @@ while True:
                 debug_done = True
                 c0  = df["close"].iloc[-1]
                 pc0 = df["close"].iloc[-2]
-                t0  = df["trail"][-1]
-                pt0 = df["trail"][-2]
+                t0  = df["trail"].iloc[-1]
+                pt0 = df["trail"].iloc[-2]
                 print(f"  🔍 DEBUG {symbol}:")
                 print(f"     close[-1]={c0:.6f}  close[-2]={pc0:.6f}")
                 print(f"     trail[-1]={t0:.6f}  trail[-2]={pt0:.6f}")
@@ -265,8 +265,8 @@ while True:
 
             c  = df["close"].iloc[-1]
             pc = df["close"].iloc[-2]
-            t  = df["trail"][-1]
-            pt = df["trail"][-2]
+            t  = df["trail"].iloc[-1]
+            pt = df["trail"].iloc[-2]
 
             # Сигнал: поточна свічка перетнула trail
             bull_cross = (c > t) and (pc <= t)
