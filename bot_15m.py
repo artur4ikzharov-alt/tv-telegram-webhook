@@ -19,12 +19,7 @@ TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
 SL_PCT  = 8.0
-MTF_MIN       = 2
-MTF_CACHE_TTL = 300
-# SIGNAL_LOOKBACK видалено — тепер перевіряємо тільки останню закриту свічку [-2]
-
 active_trades = {}
-mtf_cache     = {}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -163,52 +158,13 @@ def ai_classifier(df, is_buy, last_ph, last_pl):
     return quality, "★" * quality
 
 
-def get_trend_tf(symbol, interval):
-    df = get_klines(symbol, interval=interval, limit=60)
-    time.sleep(0.15)
-    if df is None or len(df) < 15:
-        return None
-    df["atr"]   = calculate_atr(df, ATR_LENGTH)
-    df["trail"] = calculate_smart_trail(df, SENSITIVITY)
-    df = df.dropna(subset=["atr"]).reset_index(drop=True)
-    if len(df) < 2:
-        return None
-    return bool(df["close"].iloc[-1] > df["trail"].iloc[-1])
-
-
-def get_mtf_cached(symbol):
-    now = time.time()
-    if symbol in mtf_cache:
-        t, data = mtf_cache[symbol]
-        if now - t < MTF_CACHE_TTL:
-            return data
-    timeframes = {"1г": "Min60", "4г": "Hour4", "1д": "Day1"}
-    results    = {}
-    for label, tf in timeframes.items():
-        results[label] = get_trend_tf(symbol, tf)
-    valid      = {k: v for k, v in results.items() if v is not None}
-    bull_count = sum(1 for v in valid.values() if v is True)
-    bear_count = sum(1 for v in valid.values() if v is False)
-    print(f"  MTF {symbol}: bull={bull_count} bear={bear_count} | " +
-          " ".join([f"{k}:{'🟢' if v else '🔴'}" for k, v in valid.items()]))
-    data = (bull_count, bear_count, results, len(valid))
-    mtf_cache[symbol] = (now, data)
-    return data
-
-
 def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
-               quality, stars, last_ph, last_pl,
-               bull_count, bear_count, mtf_results, valid_count):
+               quality, stars, last_ph, last_pl):
     s          = symbol.replace("_", "") + ".P"
     risk_dist  = abs(entry - sl)
     risk_usd   = USER_BALANCE * 0.03
     pos_tokens = risk_usd / risk_dist if risk_dist > 0 else 0
     pos_value  = pos_tokens * entry
-    mtf_score  = bull_count if side == "BUY" else bear_count
-    mtf_lines  = "".join([
-        f"  {tf}: {'🟢' if v is True else '🔴' if v is False else '❓'}\n"
-        for tf, v in mtf_results.items()
-    ])
     return (
         f"{'🟢' if side == 'BUY' else '🔴'} СИГНАЛ {side} | {stars} ({quality}/4)\n"
         f"#{s} (15хв)\n"
@@ -224,9 +180,6 @@ def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
         f"  Опір: {f'{last_ph:.6f}' if last_ph else '—'}\n"
         f"  Підтримка: {f'{last_pl:.6f}' if last_pl else '—'}\n"
         f"------------------------\n"
-        f"📊 MTF {mtf_score}/{valid_count}:\n"
-        f"{mtf_lines}"
-        f"------------------------\n"
         f"💵 Сума:  {pos_value:.2f} USDT\n"
         f"📊 Монет: {pos_tokens:.4f}"
     )
@@ -237,7 +190,7 @@ print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
 send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
     "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
-    "Логіка: Smart Trail crossover + AI ★ + MTF\n"
+    "Логіка: Smart Trail crossover + AI ★\n"
     f"Символів: {SYMBOLS_LIMIT}"
 )
 
@@ -304,17 +257,6 @@ while True:
             is_buy = (side == "BUY")
             quality, stars = ai_classifier(df, is_buy, last_ph, last_pl)
 
-            bull_count, bear_count, mtf_results, valid_count = get_mtf_cached(symbol)
-
-            if valid_count < 2:
-                print(f"  ⏭  {symbol}: MTF {valid_count}/3 даних, пропуск")
-                continue
-
-            mtf_ok = (bull_count >= MTF_MIN) if is_buy else (bear_count >= MTF_MIN)
-            if not mtf_ok:
-                print(f"  ⏭  {symbol}: MTF не підтверджує | bull={bull_count} bear={bear_count}")
-                continue
-
             mult = 1 if is_buy else -1
             sl   = c * (1 - mult * SL_PCT  / 100)
             tp1  = c * (1 + mult * TP1_PCT / 100)
@@ -324,8 +266,7 @@ while True:
 
             msg = format_msg(
                 symbol, side, c, sl, tp1, tp2, tp3, tp4,
-                quality, stars, last_ph, last_pl,
-                bull_count, bear_count, mtf_results, valid_count
+                quality, stars, last_ph, last_pl
             )
             send_telegram(msg)
             print(f"  ✅ СИГНАЛ: {symbol} {side} | {stars}")
@@ -337,5 +278,5 @@ while True:
             continue
 
     print(f"  📊 Діаг: немає_даних={diag_no_data} | немає_сигналу={diag_no_signal} | raw={diag_raw}")
-    print(f"  📦 MTF кеш: {len(mtf_cache)} | Активних: {len(active_trades)} | 💤 {CHECK_INTERVAL}с...")
+    print(f"  📦 Активних: {len(active_trades)} | 💤 {CHECK_INTERVAL}с...")
     time.sleep(CHECK_INTERVAL)
