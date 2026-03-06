@@ -1,5 +1,2 @@
-pandas
 requests
-flask
-numpy
-gunicorn
+pandas
