@@ -13,9 +13,9 @@ INTERVAL       = "Min15"        # ← 15 хвилин
 CHECK_INTERVAL = 30             # пауза між скануваннями (сек)
 SYMBOLS_LIMIT  = 150
 
-# Smart Trail
+# Smart Trail — Trend Trader пресет
 ATR_LENGTH  = 10
-SENSITIVITY = 5.0               # Pine: sensitivity (чим менше — більше сигналів)
+SENSITIVITY = 10.0              # Trend Trader preset (Pine: signalPresets=="Trend Trader" → 10)
 
 # AI Classifier
 VOL_MA_LEN  = 20
@@ -25,7 +25,7 @@ TP1_PCT = 3.5
 TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
-SL_PCT  = 8.0
+SL_PCT  = 8.5
 
 # MTF (опціонально)
 MTF_MIN       = 2
@@ -249,9 +249,10 @@ def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
 # ──────────────────────────────────────────
 # ГОЛОВНИЙ ЦИКЛ
 # ──────────────────────────────────────────
-print("=== SMART SIGNAL PRO — 15хв MEXC ===")
+print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
 send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
+    "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
     f"Логіка: Smart Trail + AI Classifier ★\n"
     f"Reversal Zones + MTF фільтр\n"
     f"Символів: {SYMBOLS_LIMIT}"
