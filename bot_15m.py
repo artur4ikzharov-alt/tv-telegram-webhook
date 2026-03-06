@@ -21,7 +21,6 @@ TP4_PCT = 11.0
 SL_PCT  = 8.0
 MTF_MIN       = 2
 MTF_CACHE_TTL = 300
-SIGNAL_LOOKBACK = 2
 
 active_trades = {}
 mtf_cache     = {}
@@ -46,7 +45,6 @@ def safe_get(url, params=None, retries=3):
             r = requests.get(url, params=params, headers=HEADERS, timeout=15)
             if r.status_code == 200 and r.text.strip():
                 return r.json()
-            print(f"  HTTP {r.status_code} attempt {attempt+1}")
         except Exception as e:
             print(f"  Request error attempt {attempt+1}: {e}")
         time.sleep(1 + attempt)
@@ -56,12 +54,11 @@ def safe_get(url, params=None, retries=3):
 def get_top_symbols(limit=150):
     data = safe_get("https://contract.mexc.com/api/v1/contract/ticker")
     if not data:
-        print("  ❌ Не вдалось отримати символи")
         return []
     items  = data.get("data", [])
     usdt   = [x for x in items if "USDT" in x["symbol"] and "STOCK" not in x["symbol"]]
     result = [x["symbol"] for x in sorted(usdt, key=lambda x: float(x["amount24"]), reverse=True)[:limit]]
-    print(f"  ✅ Символів отримано: {len(result)}")
+    print(f"  OK symbols: {len(result)}")
     return result
 
 
@@ -108,25 +105,28 @@ def calculate_smart_trail(df, sensitivity):
     return trail
 
 
-def find_crossover(df, lookback=2):
+def find_crossover(df):
     """
-    Шукаємо crossover на закритих свічках (виключаємо останню — вона ще формується).
-    lookback=2 означає перевіряємо свічки [-3] і [-2], де [-1] — поточна незакрита.
+    Перевіряємо ТІЛЬКИ передостанню закриту свічку [-2].
+    [-1] — поточна незакрита, її не чіпаємо.
     """
-    n = len(df)
-    for offset in range(lookback + 1, 1, -1):
-        i  = n - offset
-        if i < 1:
-            continue
-        c  = df["close"].iloc[i]
-        pc = df["close"].iloc[i-1]
-        t  = df["trail"].iloc[i]
-        pt = df["trail"].iloc[i-1]
-        if (c > t) and (pc <= pt):
-            return "BUY", i
-        if (c < t) and (pc >= pt):
-            return "SELL", i
-    return None, None
+    n  = len(df)
+    i  = n - 2   # передостання (закрита)
+    if i < 1:
+        return None
+
+    c  = df["close"].iloc[i]
+    pc = df["close"].iloc[i - 1]
+    t  = df["trail"].iloc[i]
+    pt = df["trail"].iloc[i - 1]
+
+    print(f"    chk i={i} c={c:.4f} pc={pc:.4f} t={t:.4f} pt={pt:.4f}")
+
+    if (c > t) and (pc <= pt):
+        return "BUY"
+    if (c < t) and (pc >= pt):
+        return "SELL"
+    return None
 
 
 def get_reversal_zones(df, pivot_len=5):
@@ -187,7 +187,7 @@ def get_mtf_cached(symbol):
     bull_count = sum(1 for v in valid.values() if v is True)
     bear_count = sum(1 for v in valid.values() if v is False)
     print(f"  MTF {symbol}: bull={bull_count} bear={bear_count} | " +
-          " ".join([f"{k}:{'🟢' if v else '🔴'}" for k, v in valid.items()]))
+          " ".join([f"{k}:{'UP' if v else 'DN'}" for k, v in valid.items()]))
     data = (bull_count, bear_count, results, len(valid))
     mtf_cache[symbol] = (now, data)
     return data
@@ -230,53 +230,49 @@ def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
 
 
 # ══════════════════════════════════════════
-print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
+print("=== SMART SIGNAL PRO v2 — TREND TRADER | 15хв MEXC ===")
 send_telegram(
-    "🚀 Smart Signal Pro (15хв) запущено!\n"
-    "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
-    "Логіка: Smart Trail crossover + AI ★ + MTF\n"
-    f"Lookback: {SIGNAL_LOOKBACK} свічки | Символів: {SYMBOLS_LIMIT}"
+    "🚀 Smart Signal Pro v2 (15хв) запущено!\n"
+    "🎯 Trend Trader | sensitivity=10 ATR=10\n"
+    "Smart Trail crossover [-2] + AI ★ + MTF\n"
+    f"Символів: {SYMBOLS_LIMIT}"
 )
 
 while True:
     symbols = get_top_symbols(SYMBOLS_LIMIT)
     if not symbols:
-        print("  ⚠️  Символи не отримані, чекаю 60с...")
+        print("  symbols failed, retry 60s...")
         time.sleep(60)
         continue
 
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Сканую {len(symbols)} символів...")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] scan {len(symbols)} symbols")
 
-    diag_no_data   = 0
-    diag_no_signal = 0
-    diag_raw       = 0
+    cnt_skip = 0
+    cnt_sig  = 0
 
     for symbol in symbols:
         try:
             df = get_klines(symbol)
             time.sleep(0.05)
 
-            if df is None or len(df) < 30:
-                diag_no_data += 1
+            if df is None or len(df) < 10:
+                cnt_skip += 1
                 continue
 
             df["atr"]   = calculate_atr(df, ATR_LENGTH)
             df["trail"] = calculate_smart_trail(df, SENSITIVITY)
             df = df.dropna(subset=["atr"]).reset_index(drop=True)
             if len(df) < 5:
-                diag_no_data += 1
+                cnt_skip += 1
                 continue
 
-            side, sig_idx = find_crossover(df, lookback=SIGNAL_LOOKBACK)
-
+            side = find_crossover(df)
             if side is None:
-                diag_no_signal += 1
                 continue
 
-            diag_raw += 1
+            cnt_sig += 1
             c = df["close"].iloc[-1]
-            t = df["trail"].iloc[-1]
-            print(f"  🔔 {symbol} {side} | свічка={sig_idx} c={c:.4f} trail={t:.4f}")
+            print(f"  CROSS {symbol} {side} c={c:.4f}")
 
             if symbol in active_trades:
                 tr = active_trades[symbol]
@@ -288,7 +284,7 @@ while True:
                         del active_trades[symbol]
 
             if symbol in active_trades:
-                print(f"  ⏭  {symbol}: вже в угоді")
+                print(f"  SKIP {symbol}: active trade")
                 continue
 
             last_ph, last_pl = get_reversal_zones(df)
@@ -298,12 +294,12 @@ while True:
             bull_count, bear_count, mtf_results, valid_count = get_mtf_cached(symbol)
 
             if valid_count < 2:
-                print(f"  ⏭  {symbol}: MTF {valid_count}/3 даних, пропуск")
+                print(f"  SKIP {symbol}: MTF data {valid_count}/3")
                 continue
 
             mtf_ok = (bull_count >= MTF_MIN) if is_buy else (bear_count >= MTF_MIN)
             if not mtf_ok:
-                print(f"  ⏭  {symbol}: MTF не підтверджує | bull={bull_count} bear={bear_count}")
+                print(f"  SKIP {symbol}: MTF bull={bull_count} bear={bear_count}")
                 continue
 
             mult = 1 if is_buy else -1
@@ -319,14 +315,13 @@ while True:
                 bull_count, bear_count, mtf_results, valid_count
             )
             send_telegram(msg)
-            print(f"  ✅ СИГНАЛ: {symbol} {side} | {stars}")
+            print(f"  SIGNAL {symbol} {side} {stars}")
 
             active_trades[symbol] = {"side": side, "sl": sl, "tp4": tp4}
 
         except Exception as e:
-            print(f"  ❌ {symbol}: {e}")
+            print(f"  ERR {symbol}: {e}")
             continue
 
-    print(f"  📊 Діаг: немає_даних={diag_no_data} | немає_сигналу={diag_no_signal} | raw={diag_raw}")
-    print(f"  📦 MTF кеш: {len(mtf_cache)} | Активних: {len(active_trades)} | 💤 {CHECK_INTERVAL}с...")
+    print(f"  skip={cnt_skip} cross={cnt_sig} active={len(active_trades)} cache={len(mtf_cache)} | sleep {CHECK_INTERVAL}s")
     time.sleep(CHECK_INTERVAL)
