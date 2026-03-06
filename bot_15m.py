@@ -253,8 +253,6 @@ while True:
     diag_no_data   = 0
     diag_no_signal = 0
     diag_raw       = 0
-    diag_first_logged = False
-    order_checked  = False  # перевіряємо порядок свічок лише раз
 
     for symbol in symbols:
         try:
@@ -263,19 +261,11 @@ while True:
 
             if df is None:
                 diag_no_data += 1
-                if not diag_first_logged:
-                    print(f"  ⚠️  {symbol}: df=None (API не повернув дані)")
-                    diag_first_logged = True
                 continue
 
             if len(df) < 30:
                 diag_no_data += 1
-                if not diag_first_logged:
-                    print(f"  ⚠️  {symbol}: df занадто короткий ({len(df)} рядків)")
-                    diag_first_logged = True
                 continue
-
-            diag_first_logged = True
 
             df["atr"]   = calculate_atr(df, ATR_LENGTH)
             df["trail"] = pd.array(calculate_smart_trail(df, SENSITIVITY), dtype=float)
@@ -283,17 +273,6 @@ while True:
             if len(df) < 5:
                 diag_no_data += 1
                 continue
-
-            # Перевірка порядку свічок + останні 3 свічки (один раз)
-            if not order_checked and "time" in df.columns:
-                order_checked = True
-                t0 = df["time"].iloc[0]
-                t1 = df["time"].iloc[-1]
-                print(f"  🕐 Порядок свічок: [0]={t0} → [-1]={t1} ({'зростає ✅' if t1 > t0 else 'спадає ❌'})")
-                for idx in [-3, -2, -1]:
-                    c_  = df["close"].iloc[idx]
-                    tr_ = df["trail"].iloc[idx]
-                    print(f"    свічка[{idx}]: close={c_:.6f} trail={tr_:.6f} {'▲' if c_ > tr_ else '▼'}")
 
             side = find_crossover(df)
 
