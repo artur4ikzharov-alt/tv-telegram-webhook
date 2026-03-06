@@ -13,27 +13,27 @@ INTERVAL       = "Min15"
 CHECK_INTERVAL = 30
 SYMBOLS_LIMIT  = 150
 
-# Smart Trail — Trend Trader пресет
 ATR_LENGTH  = 10
 SENSITIVITY = 10.0
+VOL_MA_LEN  = 20
 
-# AI Classifier
-VOL_MA_LEN = 20
-
-# SL/TP у %
 TP1_PCT = 3.5
 TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
 SL_PCT  = 8.0
 
-# MTF
 MTF_MIN       = 2
 MTF_CACHE_TTL = 300
 # ==========================================
 
 active_trades = {}
 mtf_cache     = {}
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json",
+}
 
 
 def send_telegram(text):
@@ -44,33 +44,44 @@ def send_telegram(text):
         print(f"  TG error: {e}")
 
 
+def safe_get(url, params=None, retries=3):
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, params=params, headers=HEADERS, timeout=15)
+            if r.status_code == 200 and r.text.strip():
+                return r.json()
+            print(f"  HTTP {r.status_code} | attempt {attempt+1}")
+        except Exception as e:
+            print(f"  Request error attempt {attempt+1}: {e}")
+        time.sleep(1 + attempt)
+    return None
+
+
 def get_top_symbols(limit=150):
-    try:
-        url  = "https://contract.mexc.com/api/v1/contract/ticker"
-        data = requests.get(url, timeout=10).json().get("data", [])
-        usdt = [x for x in data if "USDT" in x["symbol"] and "STOCK" not in x["symbol"]]
-        return [x["symbol"] for x in sorted(usdt, key=lambda x: float(x["amount24"]), reverse=True)[:limit]]
-    except Exception as e:
-        print(f"  get_top_symbols error: {e}")
+    data = safe_get("https://contract.mexc.com/api/v1/contract/ticker")
+    if not data:
+        print("  ❌ Не вдалось отримати символи з MEXC")
         return []
+    items = data.get("data", [])
+    usdt = [x for x in items if "USDT" in x["symbol"] and "STOCK" not in x["symbol"]]
+    result = [x["symbol"] for x in sorted(usdt, key=lambda x: float(x["amount24"]), reverse=True)[:limit]]
+    print(f"  ✅ Символів отримано: {len(result)}")
+    return result
 
 
 def get_klines(symbol, interval=None, limit=250):
-    try:
-        iv  = interval or INTERVAL
-        url = f"https://contract.mexc.com/api/v1/contract/kline/{symbol}"
-        r   = requests.get(url, params={"interval": iv, "limit": limit}, timeout=10).json()
-        if not r.get("success"):
-            return None
-        df = pd.DataFrame(r["data"])
-        if df.empty:
-            return None
-        for c in ["close", "high", "low", "open", "vol"]:
-            if c in df.columns:
-                df[c] = df[c].astype(float)
-        return df.reset_index(drop=True)
-    except:
+    iv  = interval or INTERVAL
+    url = f"https://contract.mexc.com/api/v1/contract/kline/{symbol}"
+    r   = safe_get(url, params={"interval": iv, "limit": limit})
+    if not r or not r.get("success"):
         return None
+    df = pd.DataFrame(r["data"])
+    if df.empty:
+        return None
+    for c in ["close", "high", "low", "open", "vol"]:
+        if c in df.columns:
+            df[c] = df[c].astype(float)
+    return df.reset_index(drop=True)
 
 
 def calculate_atr(df, period):
@@ -85,13 +96,11 @@ def calculate_smart_trail(df, sensitivity, atr_col="atr"):
     n_loss = sensitivity * df[atr_col]
     trail  = [None] * len(df)
     trail[0] = df["close"].iloc[0]
-
     for i in range(1, len(df)):
         src  = df["close"].iloc[i]
         src1 = df["close"].iloc[i-1]
         nl   = n_loss.iloc[i]
         pt   = trail[i-1] if trail[i-1] is not None else src
-
         if src > pt and src1 > pt:
             trail[i] = max(pt, src - nl)
         elif src < pt and src1 < pt:
@@ -100,7 +109,6 @@ def calculate_smart_trail(df, sensitivity, atr_col="atr"):
             trail[i] = src - nl
         else:
             trail[i] = src + nl
-
     return trail
 
 
@@ -109,7 +117,6 @@ def get_reversal_zones(df, pivot_len=5):
     lows    = df["low"].values
     last_ph = None
     last_pl = None
-
     for i in range(pivot_len, len(df) - pivot_len):
         wh = highs[i - pivot_len : i + pivot_len + 1]
         wl = lows [i - pivot_len : i + pivot_len + 1]
@@ -118,7 +125,6 @@ def get_reversal_zones(df, pivot_len=5):
                 last_ph = highs[i]
             if lows[i] == min(wl):
                 last_pl = lows[i]
-
     return last_ph, last_pl
 
 
@@ -128,10 +134,8 @@ def ai_classifier(df, is_buy, last_ph, last_pl):
     vol_ma = df["vol"].rolling(VOL_MA_LEN).mean().iloc[-1] if "vol" in df.columns else 1
     atr    = df["atr"].iloc[-1]
     atr_ma = df["atr"].rolling(20).mean().iloc[-1]
-
     vol_score  = 2 if volume > vol_ma * 2.0 else (1 if volume > vol_ma * 1.5 else 0)
     atr_score  = 1 if atr > atr_ma else 0
-
     zone_score = 0
     if is_buy and last_pl is not None:
         if abs(close - last_pl) / close < 0.02:
@@ -139,10 +143,8 @@ def ai_classifier(df, is_buy, last_ph, last_pl):
     elif not is_buy and last_ph is not None:
         if abs(close - last_ph) / close < 0.02:
             zone_score = 1
-
     quality = min(vol_score + atr_score + zone_score + 1, 4)
-    stars   = "★" * quality
-    return quality, stars
+    return quality, "★" * quality
 
 
 def get_trend_tf(symbol, interval):
@@ -164,19 +166,15 @@ def get_mtf_cached(symbol):
         cached_time, data = mtf_cache[symbol]
         if now - cached_time < MTF_CACHE_TTL:
             return data
-
     timeframes = {"1г": "Min60", "4г": "Hour4", "1д": "Day1"}
     results    = {}
     for label, tf in timeframes.items():
         results[label] = get_trend_tf(symbol, tf)
-
     valid      = {k: v for k, v in results.items() if v is not None}
     bull_count = sum(1 for v in valid.values() if v is True)
     bear_count = sum(1 for v in valid.values() if v is False)
-
     print(f"  MTF {symbol}: bull={bull_count} bear={bear_count} | " +
           " ".join([f"{k}:{'🟢' if v else '🔴'}" for k, v in valid.items()]))
-
     data = (bull_count, bear_count, results, len(valid))
     mtf_cache[symbol] = (now, data)
     return data
@@ -185,21 +183,17 @@ def get_mtf_cached(symbol):
 def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
                quality, stars, last_ph, last_pl,
                bull_count, bear_count, mtf_results, valid_count):
-
     s          = symbol.replace("_", "") + ".P"
     risk_dist  = abs(entry - sl)
     risk_usd   = USER_BALANCE * 0.03
     pos_tokens = risk_usd / risk_dist if risk_dist > 0 else 0
     pos_value  = pos_tokens * entry
-
-    mtf_score = bull_count if side == "BUY" else bear_count
-    mtf_lines = ""
+    mtf_score  = bull_count if side == "BUY" else bear_count
+    mtf_lines  = ""
     for tf, val in mtf_results.items():
         mtf_lines += f"  {tf}: {'🟢' if val is True else '🔴' if val is False else '❓'}\n"
-
     rz_high_str = f"{last_ph:.6f}" if last_ph else "—"
     rz_low_str  = f"{last_pl:.6f}" if last_pl  else "—"
-
     return (
         f"{'🟢' if side == 'BUY' else '🔴'} СИГНАЛ {side} | {stars} ({quality}/4)\n"
         f"#{s} (15хв)\n"
@@ -224,19 +218,22 @@ def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
 
 
 # ──────────────────────────────────────────
-# ГОЛОВНИЙ ЦИКЛ
-# ──────────────────────────────────────────
 print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
 send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
     "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
-    f"Логіка: Smart Trail + AI Classifier ★\n"
-    f"Reversal Zones + MTF фільтр\n"
+    "Логіка: Smart Trail + AI Classifier ★\n"
+    "Reversal Zones + MTF фільтр\n"
     f"Символів: {SYMBOLS_LIMIT}"
 )
 
 while True:
     symbols = get_top_symbols(SYMBOLS_LIMIT)
+    if not symbols:
+        print(f"  ⚠️  Символи не отримані, чекаю 60с...")
+        time.sleep(60)
+        continue
+
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Сканую {len(symbols)} символів...")
 
     diag_no_data   = 0
@@ -274,7 +271,6 @@ while True:
             diag_raw += 1
             print(f"  🔔 {symbol} {'BUY' if buy_signal else 'SELL'} | c={c:.4f} trail={t:.4f}")
 
-            # Перевірка активної угоди
             if symbol in active_trades:
                 tr = active_trades[symbol]
                 if tr["side"] == "BUY":
@@ -285,7 +281,6 @@ while True:
                         del active_trades[symbol]
 
             if symbol in active_trades:
-                print(f"  ⏭  {symbol}: вже в угоді")
                 continue
 
             last_ph, last_pl = get_reversal_zones(df)
