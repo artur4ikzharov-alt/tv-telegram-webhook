@@ -107,24 +107,31 @@ def calculate_smart_trail(df, sensitivity):
 
 def find_crossover(df):
     """
-    Перевіряємо ТІЛЬКИ передостанню закриту свічку [-2].
-    [-1] — поточна незакрита, її не чіпаємо.
+    Сигнал коли trail змінив напрям на передостанній закритій свічці [-2].
+    trail йде вгору = BUY, trail йде вниз = SELL
     """
     n  = len(df)
-    i  = n - 2   # передостання (закрита)
-    if i < 1:
+    i  = n - 2   # передостання закрита свічка
+
+    if i < 2:
         return None
 
+    t0 = df["trail"].iloc[i]      # поточний trail
+    t1 = df["trail"].iloc[i - 1]  # попередній
+    t2 = df["trail"].iloc[i - 2]  # ще раніше
+
     c  = df["close"].iloc[i]
-    pc = df["close"].iloc[i - 1]
-    t  = df["trail"].iloc[i]
-    pt = df["trail"].iloc[i - 1]
 
-    print(f"    chk i={i} c={c:.4f} pc={pc:.4f} t={t:.4f} pt={pt:.4f}")
+    # Trail щойно змінив напрям: був вниз, став вгору
+    trail_turned_up   = (t0 > t1) and (t1 <= t2) and (c > t0)
+    # Trail щойно змінив напрям: був вгору, став вниз
+    trail_turned_down = (t0 < t1) and (t1 >= t2) and (c < t0)
 
-    if (c > t) and (pc <= pt):
+    print(f"    t2={t2:.4f} t1={t1:.4f} t0={t0:.4f} c={c:.4f} up={trail_turned_up} dn={trail_turned_down}")
+
+    if trail_turned_up:
         return "BUY"
-    if (c < t) and (pc >= pt):
+    if trail_turned_down:
         return "SELL"
     return None
 
