@@ -18,7 +18,7 @@ TP1_PCT = 3.5
 TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
-SL_PCT  = 8.0
+SL_PCT  = 8.5
 active_trades = {}
 
 HEADERS = {
@@ -256,6 +256,10 @@ while True:
             last_ph, last_pl = get_reversal_zones(df)
             is_buy = (side == "BUY")
             quality, stars = ai_classifier(df, is_buy, last_ph, last_pl)
+
+            if quality < 2:
+                print(f"  ⏭  {symbol}: якість {stars} ({quality}/4), пропуск")
+                continue
 
             mult = 1 if is_buy else -1
             sl   = c * (1 - mult * SL_PCT  / 100)
