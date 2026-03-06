@@ -253,15 +253,28 @@ while True:
     diag_no_data   = 0
     diag_no_signal = 0
     diag_raw       = 0
+    diag_first_logged = False  # щоб перевірити що хоча б один символ обробився
 
     for symbol in symbols:
         try:
             df = get_klines(symbol)
             time.sleep(0.05)
 
-            if df is None or len(df) < 30:
+            if df is None:
                 diag_no_data += 1
+                if not diag_first_logged:
+                    print(f"  ⚠️  {symbol}: df=None (API не повернув дані)")
+                    diag_first_logged = True
                 continue
+
+            if len(df) < 30:
+                diag_no_data += 1
+                if not diag_first_logged:
+                    print(f"  ⚠️  {symbol}: df занадто короткий ({len(df)} рядків)")
+                    diag_first_logged = True
+                continue
+
+            diag_first_logged = True  # дані є, далі нормальний потік
 
             df["atr"]   = calculate_atr(df, ATR_LENGTH)
             df["trail"] = calculate_smart_trail(df, SENSITIVITY)
