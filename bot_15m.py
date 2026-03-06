@@ -261,8 +261,8 @@ while True:
             t  = df["trail"].iloc[-1]
             pt = df["trail"].iloc[-2]
 
-            buy_signal  = (c > t) and (pc <= pt)
-            sell_signal = (c < t) and (pc >= pt)
+            buy_signal  = (c > t) and (pc <= t)  # crossover: ціна перетнула trail знизу вгору
+            sell_signal = (c < t) and (pc >= t)  # crossunder: ціна перетнула trail зверху вниз
 
             if not (buy_signal or sell_signal):
                 diag_no_signal += 1
