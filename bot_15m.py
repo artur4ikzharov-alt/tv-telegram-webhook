@@ -275,26 +275,25 @@ while True:
                     diag_first_logged = True
                 continue
 
-            diag_first_logged = True  # дані є, далі нормальний потік
+            diag_first_logged = True
 
-            # Перевірка порядку свічок (один раз)
+            df["atr"]   = calculate_atr(df, ATR_LENGTH)
+            df["trail"] = pd.array(calculate_smart_trail(df, SENSITIVITY), dtype=float)
+            df = df.dropna(subset=["atr", "trail"]).reset_index(drop=True)
+            if len(df) < 5:
+                diag_no_data += 1
+                continue
+
+            # Перевірка порядку свічок + останні 3 свічки (один раз)
             if not order_checked and "time" in df.columns:
                 order_checked = True
                 t0 = df["time"].iloc[0]
                 t1 = df["time"].iloc[-1]
-                print(f"  🕐 Порядок свічок: [0]={t0} → [-1]={t1} ({'зростає ✅' if t1 > t0 else 'спадає ❌ — треба reverse!'})")
-                # Показуємо останні 3 свічки для діагностики
+                print(f"  🕐 Порядок свічок: [0]={t0} → [-1]={t1} ({'зростає ✅' if t1 > t0 else 'спадає ❌'})")
                 for idx in [-3, -2, -1]:
-                    row = df.iloc[idx]
-                    trail_val = df["trail"].iloc[idx]
-                    print(f"    свічка[{idx}]: close={row['close']:.4f} trail={trail_val:.4f} {'▲' if row['close'] > trail_val else '▼'}")
-
-            df["atr"]   = calculate_atr(df, ATR_LENGTH)
-            df["trail"] = calculate_smart_trail(df, SENSITIVITY)
-            df = df.dropna(subset=["atr"]).reset_index(drop=True)
-            if len(df) < 5:
-                diag_no_data += 1
-                continue
+                    c_  = df["close"].iloc[idx]
+                    tr_ = df["trail"].iloc[idx]
+                    print(f"    свічка[{idx}]: close={c_:.6f} trail={tr_:.6f} {'▲' if c_ > tr_ else '▼'}")
 
             side = find_crossover(df)
 
