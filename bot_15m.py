@@ -21,7 +21,7 @@ TP4_PCT = 11.0
 SL_PCT  = 8.0
 MTF_MIN       = 2
 MTF_CACHE_TTL = 300
-SIGNAL_LOOKBACK = 2   # шукаємо crossover тільки на останніх 2 свічках (свіжі сигнали)
+# SIGNAL_LOOKBACK видалено — тепер перевіряємо тільки останню закриту свічку [-2]
 
 active_trades = {}
 mtf_cache     = {}
@@ -111,24 +111,25 @@ def calculate_smart_trail(df, sensitivity):
 def find_crossover(df):
     """
     Точна репліка Pine Script: ta.crossover / ta.crossunder
-    buySignal  = close[i] > trail[i] AND close[i-1] <= trail[i-1]
-    sellSignal = close[i] < trail[i] AND close[i-1] >= trail[i-1]
-    Перевіряємо закриті свічки [-3] і [-2]. [-1] ігноруємо (незакрита).
+    buySignal  = close > trail  AND close[1] <= trail[1]
+    sellSignal = close < trail  AND close[1] >= trail[1]
+
+    [-1] — незакрита свічка (ігноруємо)
+    [-2] — остання закрита свічка (перевіряємо, як Pine Script)
     """
     n = len(df)
-    for i in [n - 2, n - 3]:
-        if i < 1:
-            continue
-        c  = df["close"].iloc[i]
-        pc = df["close"].iloc[i - 1]
-        t  = df["trail"].iloc[i]
-        pt = df["trail"].iloc[i - 1]
-        if (c > t) and (pc <= pt):
-            return "BUY"
-        if (c < t) and (pc >= pt):
-            return "SELL"
+    i = n - 2  # остання закрита свічка
+    if i < 1:
+        return None
+    c  = df["close"].iloc[i]
+    pc = df["close"].iloc[i - 1]
+    t  = df["trail"].iloc[i]
+    pt = df["trail"].iloc[i - 1]
+    if (c > t) and (pc <= pt):
+        return "BUY"
+    if (c < t) and (pc >= pt):
+        return "SELL"
     return None
-
 
 
 def get_reversal_zones(df, pivot_len=5):
@@ -237,7 +238,7 @@ send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
     "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
     "Логіка: Smart Trail crossover + AI ★ + MTF\n"
-    f"Lookback: {SIGNAL_LOOKBACK} свічки | Символів: {SYMBOLS_LIMIT}"
+    f"Символів: {SYMBOLS_LIMIT}"
 )
 
 while True:
@@ -276,18 +277,19 @@ while True:
                 continue
 
             diag_raw += 1
-            c = df["close"].iloc[-1]
-            t = df["trail"].iloc[-1]
+            c = df["close"].iloc[-2]   # ціна закритої свічки (як у сигналі)
+            t = df["trail"].iloc[-2]
             print(f"  🔔 {symbol} {side} c={c:.4f} trail={t:.4f}")
 
             # Перевірка активної угоди
             if symbol in active_trades:
                 tr = active_trades[symbol]
+                cur = df["close"].iloc[-1]  # поточна ціна для перевірки виходу
                 if tr["side"] == "BUY":
-                    if c <= tr["sl"] or c >= tr["tp4"]:
+                    if cur <= tr["sl"] or cur >= tr["tp4"]:
                         del active_trades[symbol]
                 else:
-                    if c >= tr["sl"] or c <= tr["tp4"]:
+                    if cur >= tr["sl"] or cur <= tr["tp4"]:
                         del active_trades[symbol]
 
             if symbol in active_trades:
