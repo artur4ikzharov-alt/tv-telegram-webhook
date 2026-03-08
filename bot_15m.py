@@ -204,10 +204,12 @@ while True:
 
             if df is None:
                 diag_no_data += 1
+                print(f"  ⚠️  {symbol}: немає даних (не існує на MEXC?)")
                 continue
 
             if len(df) < 30:
                 diag_no_data += 1
+                print(f"  ⚠️  {symbol}: мало свічок ({len(df)})")
                 continue
 
             df["atr"]   = calculate_atr(df, ATR_LENGTH)
