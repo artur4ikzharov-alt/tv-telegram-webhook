@@ -10,7 +10,6 @@ USER_BALANCE = float(os.getenv("USER_BALANCE", "100.0"))
 
 INTERVAL       = "Min15"
 CHECK_INTERVAL = 30
-SYMBOLS_LIMIT  = 150
 ATR_LENGTH     = 10
 SENSITIVITY    = 10.0
 VOL_MA_LEN     = 20
@@ -18,7 +17,7 @@ TP1_PCT = 3.5
 TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
-SL_PCT  = 8.5
+SL_PCT  = 8.0
 active_trades = {}
 
 HEADERS = {
@@ -48,16 +47,12 @@ def safe_get(url, params=None, retries=3):
     return None
 
 
-def get_top_symbols(limit=150):
-    data = safe_get("https://contract.mexc.com/api/v1/contract/ticker")
-    if not data:
-        print("  ❌ Не вдалось отримати символи")
-        return []
-    items  = data.get("data", [])
-    usdt   = [x for x in items if "USDT" in x["symbol"] and "STOCK" not in x["symbol"]]
-    result = [x["symbol"] for x in sorted(usdt, key=lambda x: float(x["amount24"]), reverse=True)[:limit]]
-    print(f"  ✅ Символів отримано: {len(result)}")
-    return result
+WATCHED_SYMBOLS = [
+    "ORDI_USDT", "AAVE_USDT", "ARB_USDT", "DOT_USDT", "LINK_USDT",
+    "BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT", "ZEC_USDT",
+    "1000PEPE_USDT", "WIF_USDT", "LDO_USDT", "XAU_USDT", "UNI_USDT",
+    "AXS_USDT", "DYDX_USDT"
+]
 
 
 def get_klines(symbol, interval=None, limit=250):
@@ -191,16 +186,11 @@ send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
     "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
     "Логіка: Smart Trail crossover + AI ★\n"
-    f"Символів: {SYMBOLS_LIMIT}"
+    f"Символів: {len(WATCHED_SYMBOLS)}"
 )
 
 while True:
-    symbols = get_top_symbols(SYMBOLS_LIMIT)
-    if not symbols:
-        print("  ⚠️  Символи не отримані, чекаю 60с...")
-        time.sleep(60)
-        continue
-
+    symbols = WATCHED_SYMBOLS
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Сканую {len(symbols)} символів...")
 
     diag_no_data   = 0
