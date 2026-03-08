@@ -21,8 +21,13 @@ SL_PCT  = 8.0
 active_trades = {}
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Referer": "https://futures.mexc.com/",
+    "Origin": "https://futures.mexc.com",
 }
 
 
@@ -40,10 +45,14 @@ def safe_get(url, params=None, retries=3):
             r = requests.get(url, params=params, headers=HEADERS, timeout=15)
             if r.status_code == 200 and r.text.strip():
                 return r.json()
-            print(f"  HTTP {r.status_code} attempt {attempt+1}")
+            if r.status_code == 403:
+                print(f"  HTTP 403 — чекаю 5с attempt {attempt+1}")
+                time.sleep(5)
+            else:
+                print(f"  HTTP {r.status_code} attempt {attempt+1}")
         except Exception as e:
             print(f"  Request error attempt {attempt+1}: {e}")
-        time.sleep(1 + attempt)
+        time.sleep(2 + attempt * 2)
     return None
 
 
