@@ -8,7 +8,7 @@ TOKEN        = os.getenv("TOKEN")
 CHAT_ID      = os.getenv("CHAT_ID")
 USER_BALANCE = float(os.getenv("USER_BALANCE", "100.0"))
 
-INTERVAL       = "15"          # Bybit: "1","3","5","15","30","60","120","240","D"
+INTERVAL       = "Min15"
 CHECK_INTERVAL = 30
 ATR_LENGTH     = 10
 SENSITIVITY    = 10.0
@@ -18,19 +18,25 @@ TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
 SL_PCT  = 8.0
+
 active_trades = {}
+signal_cache  = {}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Referer": "https://futures.mexc.com/",
+    "Origin": "https://futures.mexc.com",
 }
 
-# Bybit символи (лінійні perpetual futures)
 WATCHED_SYMBOLS = [
-    "ORDIUSDT", "AAVEUSDT", "ARBUSDT", "DOTUSDT", "LINKUSDT",
-    "BTCUSDT",  "ETHUSDT",  "SOLUSDT", "XRPUSDT", "ZECUSDT",
-    "1000PEPEUSDT", "WIFUSDT", "LDOUSDT", "XAUTUSDT", "UNIUSDT",
-    "AXSUSDT",  "DYDXUSDT"
+    "ORDI_USDT", "AAVE_USDT", "ARB_USDT",  "DOT_USDT",  "LINK_USDT",
+    "BTC_USDT",  "ETH_USDT",  "SOL_USDT",  "XRP_USDT",  "ZEC_USDT",
+    "1000PEPE_USDT", "WIF_USDT", "LDO_USDT", "XAUT_USDT", "UNI_USDT",
+    "AXS_USDT",  "DYDX_USDT"
 ]
 
 
@@ -48,33 +54,29 @@ def safe_get(url, params=None, retries=3):
             r = requests.get(url, params=params, headers=HEADERS, timeout=15)
             if r.status_code == 200 and r.text.strip():
                 return r.json()
-            print(f"  HTTP {r.status_code} attempt {attempt+1}")
+            if r.status_code == 403:
+                print(f"  HTTP 403 — чекаю 5с attempt {attempt+1}")
+                time.sleep(5)
+            else:
+                print(f"  HTTP {r.status_code} attempt {attempt+1}")
         except Exception as e:
             print(f"  Request error attempt {attempt+1}: {e}")
-        time.sleep(1 + attempt)
+        time.sleep(2 + attempt * 2)
     return None
 
 
 def get_klines(symbol, interval=None, limit=250):
     iv  = interval or INTERVAL
-    url = "https://api.bybit.com/v5/market/kline"
-    r   = safe_get(url, params={
-        "category": "linear",
-        "symbol":   symbol,
-        "interval": iv,
-        "limit":    limit
-    })
-    if not r or r.get("retCode") != 0:
+    url = f"https://contract.mexc.com/api/v1/contract/kline/{symbol}"
+    r   = safe_get(url, params={"interval": iv, "limit": limit})
+    if not r or r.get("success") not in (True, 1):
         return None
-    rows = r.get("result", {}).get("list", [])
-    if not rows:
+    df = pd.DataFrame(r["data"])
+    if df.empty:
         return None
-    # Bybit повертає від нової до старої — робимо reverse
-    rows = list(reversed(rows))
-    df = pd.DataFrame(rows, columns=["time","open","high","low","close","vol","turnover"])
-    for c in ["open","high","low","close","vol"]:
-        df[c] = df[c].astype(float)
-    df["time"] = df["time"].astype(float)
+    for c in ["close", "high", "low", "open", "vol"]:
+        if c in df.columns:
+            df[c] = df[c].astype(float)
     return df.reset_index(drop=True)
 
 
@@ -106,13 +108,7 @@ def calculate_smart_trail(df, sensitivity):
     return trail
 
 
-signal_cache = {}  # symbol -> timestamp останнього сигналу
-
 def find_crossover(df):
-    """
-    Перевіряємо останні 5 закритих свічок [-2]..[-6]
-    щоб не пропустити сигнал між циклами сканування.
-    """
     n = len(df)
     for i in [n - 2, n - 3, n - 4, n - 5, n - 6]:
         if i < 1:
@@ -161,7 +157,7 @@ def ai_classifier(df, is_buy, last_ph, last_pl):
 
 def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
                quality, stars, last_ph, last_pl):
-    s          = symbol + ".P"
+    s          = symbol.replace("_", "") + ".P"
     risk_dist  = abs(entry - sl)
     risk_usd   = USER_BALANCE * 0.03
     pos_tokens = risk_usd / risk_dist if risk_dist > 0 else 0
@@ -187,10 +183,10 @@ def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
 
 
 # ══════════════════════════════════════════
-print("=== SMART SIGNAL PRO — TREND TRADER | 15хв BYBIT ===")
+print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
 send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
-    "📊 Біржа: Bybit\n"
+    "📊 Біржа: MEXC\n"
     "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
     "Логіка: Smart Trail crossover + AI ★\n"
     f"Символів: {len(WATCHED_SYMBOLS)}"
@@ -211,12 +207,11 @@ while True:
 
             if df is None:
                 diag_no_data += 1
-                print(f"  ⚠️  {symbol}: немає даних (не існує на MEXC?)")
+                print(f"  ⚠️  {symbol}: немає даних")
                 continue
 
             if len(df) < 30:
                 diag_no_data += 1
-                print(f"  ⚠️  {symbol}: мало свічок ({len(df)})")
                 continue
 
             df["atr"]   = calculate_atr(df, ATR_LENGTH)
@@ -232,8 +227,7 @@ while True:
                 diag_no_signal += 1
                 continue
 
-            # Унікальний ключ сигналу = символ + індекс свічки
-            sig_time = df["time"].iloc[sig_idx] if "time" in df.columns else sig_idx
+            sig_time  = df["time"].iloc[sig_idx] if "time" in df.columns else sig_idx
             cache_key = f"{symbol}_{sig_time}"
             if cache_key in signal_cache:
                 diag_no_signal += 1
@@ -245,10 +239,9 @@ while True:
             t = df["trail"].iloc[sig_idx]
             print(f"  🔔 {symbol} {side} c={c:.4f} trail={t:.4f}")
 
-            # Перевірка активної угоди
             if symbol in active_trades:
-                tr = active_trades[symbol]
-                cur = df["close"].iloc[-1]  # поточна ціна для перевірки виходу
+                tr  = active_trades[symbol]
+                cur = df["close"].iloc[-1]
                 if tr["side"] == "BUY":
                     if cur <= tr["sl"] or cur >= tr["tp4"]:
                         del active_trades[symbol]
@@ -264,10 +257,7 @@ while True:
             is_buy = (side == "BUY")
             quality, stars = ai_classifier(df, is_buy, last_ph, last_pl)
 
-            if quality < 2:
-                print(f"  ⏭  {symbol}: якість {stars} ({quality}/4), пропуск")
-                continue
-
+            # Всі сигнали відправляємо (включно з 1 зіркою)
             mult = 1 if is_buy else -1
             sl   = c * (1 - mult * SL_PCT  / 100)
             tp1  = c * (1 + mult * TP1_PCT / 100)
