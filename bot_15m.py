@@ -8,7 +8,7 @@ TOKEN        = os.getenv("TOKEN")
 CHAT_ID      = os.getenv("CHAT_ID")
 USER_BALANCE = float(os.getenv("USER_BALANCE", "100.0"))
 
-INTERVAL       = "Min15"
+INTERVAL       = "15"          # Bybit: "1","3","5","15","30","60","120","240","D"
 CHECK_INTERVAL = 30
 ATR_LENGTH     = 10
 SENSITIVITY    = 10.0
@@ -22,13 +22,16 @@ active_trades = {}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Referer": "https://futures.mexc.com/",
-    "Origin": "https://futures.mexc.com",
+    "Accept": "application/json",
 }
+
+# Bybit символи (лінійні perpetual futures)
+WATCHED_SYMBOLS = [
+    "ORDIUSDT", "AAVEUSDT", "ARBUSDT", "DOTUSDT", "LINKUSDT",
+    "BTCUSDT",  "ETHUSDT",  "SOLUSDT", "XRPUSDT", "ZECUSDT",
+    "1000PEPEUSDT", "WIFUSDT", "LDOUSDT", "XAUTUSDT", "UNIUSDT",
+    "AXSUSDT",  "DYDXUSDT"
+]
 
 
 def send_telegram(text):
@@ -45,37 +48,33 @@ def safe_get(url, params=None, retries=3):
             r = requests.get(url, params=params, headers=HEADERS, timeout=15)
             if r.status_code == 200 and r.text.strip():
                 return r.json()
-            if r.status_code == 403:
-                print(f"  HTTP 403 — чекаю 5с attempt {attempt+1}")
-                time.sleep(5)
-            else:
-                print(f"  HTTP {r.status_code} attempt {attempt+1}")
+            print(f"  HTTP {r.status_code} attempt {attempt+1}")
         except Exception as e:
             print(f"  Request error attempt {attempt+1}: {e}")
-        time.sleep(2 + attempt * 2)
+        time.sleep(1 + attempt)
     return None
-
-
-WATCHED_SYMBOLS = [
-    "ORDI_USDT", "AAVE_USDT", "ARB_USDT", "DOT_USDT", "LINK_USDT",
-    "BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT", "ZEC_USDT",
-    "1000PEPE_USDT", "WIF_USDT", "LDO_USDT", "XAUT_USDT", "UNI_USDT",
-    "AXS_USDT", "DYDX_USDT"
-]
 
 
 def get_klines(symbol, interval=None, limit=250):
     iv  = interval or INTERVAL
-    url = f"https://contract.mexc.com/api/v1/contract/kline/{symbol}"
-    r   = safe_get(url, params={"interval": iv, "limit": limit})
-    if not r or r.get("success") not in (True, 1):
+    url = "https://api.bybit.com/v5/market/kline"
+    r   = safe_get(url, params={
+        "category": "linear",
+        "symbol":   symbol,
+        "interval": iv,
+        "limit":    limit
+    })
+    if not r or r.get("retCode") != 0:
         return None
-    df = pd.DataFrame(r["data"])
-    if df.empty:
+    rows = r.get("result", {}).get("list", [])
+    if not rows:
         return None
-    for c in ["close", "high", "low", "open", "vol"]:
-        if c in df.columns:
-            df[c] = df[c].astype(float)
+    # Bybit повертає від нової до старої — робимо reverse
+    rows = list(reversed(rows))
+    df = pd.DataFrame(rows, columns=["time","open","high","low","close","vol","turnover"])
+    for c in ["open","high","low","close","vol"]:
+        df[c] = df[c].astype(float)
+    df["time"] = df["time"].astype(float)
     return df.reset_index(drop=True)
 
 
@@ -162,7 +161,7 @@ def ai_classifier(df, is_buy, last_ph, last_pl):
 
 def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
                quality, stars, last_ph, last_pl):
-    s          = symbol.replace("_", "") + ".P"
+    s          = symbol + ".P"
     risk_dist  = abs(entry - sl)
     risk_usd   = USER_BALANCE * 0.03
     pos_tokens = risk_usd / risk_dist if risk_dist > 0 else 0
@@ -188,9 +187,10 @@ def format_msg(symbol, side, entry, sl, tp1, tp2, tp3, tp4,
 
 
 # ══════════════════════════════════════════
-print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
+print("=== SMART SIGNAL PRO — TREND TRADER | 15хв BYBIT ===")
 send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
+    "📊 Біржа: Bybit\n"
     "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
     "Логіка: Smart Trail crossover + AI ★\n"
     f"Символів: {len(WATCHED_SYMBOLS)}"
