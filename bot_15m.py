@@ -35,7 +35,7 @@ HEADERS = {
 WATCHED_SYMBOLS = [
     "ORDI_USDT", "AAVE_USDT", "ARB_USDT",  "DOT_USDT",  "LINK_USDT",
     "BTC_USDT",  "ETH_USDT",  "SOL_USDT",  "XRP_USDT",  "ZEC_USDT",
-    "1000PEPE_USDT", "WIF_USDT", "LDO_USDT", "XAUT_USDT", "UNI_USDT",
+    "PEPE_USDT", "WIF_USDT",  "LDO_USDT",  "XAUT_USDT", "UNI_USDT",
     "AXS_USDT",  "DYDX_USDT"
 ]
 
@@ -257,7 +257,6 @@ while True:
             is_buy = (side == "BUY")
             quality, stars = ai_classifier(df, is_buy, last_ph, last_pl)
 
-            # Всі сигнали відправляємо (включно з 1 зіркою)
             mult = 1 if is_buy else -1
             sl   = c * (1 - mult * SL_PCT  / 100)
             tp1  = c * (1 + mult * TP1_PCT / 100)
