@@ -17,7 +17,7 @@ TP1_PCT = 3.5
 TP2_PCT = 5.0
 TP3_PCT = 7.0
 TP4_PCT = 11.0
-SL_PCT  = 8.0
+SL_PCT  = 8.5
 
 active_trades = {}
 signal_cache  = {}
