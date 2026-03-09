@@ -59,7 +59,7 @@ def safe_get(url, params=None, retries=3):
 WATCHED_SYMBOLS = [
     "ORDI_USDT", "AAVE_USDT", "ARB_USDT", "DOT_USDT", "LINK_USDT",
     "BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT", "ZEC_USDT",
-    "PEPE_USDT", "WIF_USDT", "LDO_USDT", "XAUT_USDT", "UNI_USDT",
+    "1000PEPE_USDT", "WIF_USDT", "LDO_USDT", "XAUT_USDT", "UNI_USDT",
     "AXS_USDT", "DYDX_USDT"
 ]
 
@@ -230,9 +230,6 @@ while True:
 
             if side is None:
                 diag_no_signal += 1
-                c2  = df["close"].iloc[-2]
-                t2  = df["trail"].iloc[-2]
-                print(f"  — {symbol}: c={c2:.4f} trail={t2:.4f} {'▲' if c2 > t2 else '▼'}")
                 continue
 
             # Унікальний ключ сигналу = символ + індекс свічки
