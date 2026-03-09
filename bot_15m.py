@@ -107,28 +107,26 @@ def calculate_smart_trail(df, sensitivity):
     return trail
 
 
+signal_cache = {}  # symbol -> timestamp останнього сигналу
+
 def find_crossover(df):
     """
-    Точна репліка Pine Script: ta.crossover / ta.crossunder
-    buySignal  = close > trail  AND close[1] <= trail[1]
-    sellSignal = close < trail  AND close[1] >= trail[1]
-
-    [-1] — незакрита свічка (ігноруємо)
-    [-2] — остання закрита свічка (перевіряємо, як Pine Script)
+    Перевіряємо останні 3 закриті свічки [-2], [-3], [-4]
+    щоб не пропустити сигнал між циклами сканування.
     """
     n = len(df)
-    i = n - 2  # остання закрита свічка
-    if i < 1:
-        return None
-    c  = df["close"].iloc[i]
-    pc = df["close"].iloc[i - 1]
-    t  = df["trail"].iloc[i]
-    pt = df["trail"].iloc[i - 1]
-    if (c > t) and (pc <= pt):
-        return "BUY"
-    if (c < t) and (pc >= pt):
-        return "SELL"
-    return None
+    for i in [n - 2, n - 3, n - 4]:
+        if i < 1:
+            continue
+        c  = df["close"].iloc[i]
+        pc = df["close"].iloc[i - 1]
+        t  = df["trail"].iloc[i]
+        pt = df["trail"].iloc[i - 1]
+        if (c > t) and (pc <= pt):
+            return "BUY", i
+        if (c < t) and (pc >= pt):
+            return "SELL", i
+    return None, None
 
 
 def get_reversal_zones(df, pivot_len=5):
@@ -228,15 +226,23 @@ while True:
                 diag_no_data += 1
                 continue
 
-            side = find_crossover(df)
+            side, sig_idx = find_crossover(df)
 
             if side is None:
                 diag_no_signal += 1
                 continue
 
+            # Унікальний ключ сигналу = символ + індекс свічки
+            sig_time = df["time"].iloc[sig_idx] if "time" in df.columns else sig_idx
+            cache_key = f"{symbol}_{sig_time}"
+            if cache_key in signal_cache:
+                diag_no_signal += 1
+                continue
+            signal_cache[cache_key] = True
+
             diag_raw += 1
-            c = df["close"].iloc[-2]   # ціна закритої свічки (як у сигналі)
-            t = df["trail"].iloc[-2]
+            c = df["close"].iloc[sig_idx]
+            t = df["trail"].iloc[sig_idx]
             print(f"  🔔 {symbol} {side} c={c:.4f} trail={t:.4f}")
 
             # Перевірка активної угоди
