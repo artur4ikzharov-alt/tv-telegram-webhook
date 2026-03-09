@@ -111,11 +111,11 @@ signal_cache = {}  # symbol -> timestamp останнього сигналу
 
 def find_crossover(df):
     """
-    Перевіряємо останні 3 закриті свічки [-2], [-3], [-4]
+    Перевіряємо останні 5 закритих свічок [-2]..[-6]
     щоб не пропустити сигнал між циклами сканування.
     """
     n = len(df)
-    for i in [n - 2, n - 3, n - 4]:
+    for i in [n - 2, n - 3, n - 4, n - 5, n - 6]:
         if i < 1:
             continue
         c  = df["close"].iloc[i]
@@ -230,6 +230,9 @@ while True:
 
             if side is None:
                 diag_no_signal += 1
+                c2  = df["close"].iloc[-2]
+                t2  = df["trail"].iloc[-2]
+                print(f"  — {symbol}: c={c2:.4f} trail={t2:.4f} {'▲' if c2 > t2 else '▼'}")
                 continue
 
             # Унікальний ключ сигналу = символ + індекс свічки
