@@ -9,7 +9,7 @@ CHAT_ID      = os.getenv("CHAT_ID")
 USER_BALANCE = float(os.getenv("USER_BALANCE", "100.0"))
 
 INTERVAL       = "Min15"
-CHECK_INTERVAL = 30
+CHECK_INTERVAL = 10
 ATR_LENGTH     = 10
 SENSITIVITY    = 10.0
 VOL_MA_LEN     = 20
@@ -111,7 +111,9 @@ def calculate_smart_trail(df, sensitivity):
 
 def find_crossover(df):
     n = len(df)
-    for i in [n - 2, n - 3, n - 4, n - 5, n - 6]:
+    
+    # Сначала проверяем ТЕКУЩУЮ незакрытую свечу (последняя)
+    for i in [n - 1, n - 2, n - 3, n - 4, n - 5, n - 6]:
         if i < 1:
             continue
         c  = df["close"].iloc[i]
