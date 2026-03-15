@@ -113,7 +113,7 @@ def find_crossover(df):
     n = len(df)
     
     # Сначала проверяем ТЕКУЩУЮ незакрытую свечу (последняя)
-    for i in [n - 1, n - 2, n - 3, n - 4, n - 5, n - 6]:
+    for i in [n - 2, n - 3, n - 4, n - 5, n - 6]:
         if i < 1:
             continue
         c  = df["close"].iloc[i]
