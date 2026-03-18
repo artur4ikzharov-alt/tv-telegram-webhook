@@ -10,7 +10,7 @@ USER_BALANCE = float(os.getenv("USER_BALANCE", "100.0"))
 
 INTERVAL       = "Min15"
 CHECK_INTERVAL = 10
-ATR_LENGTH     = 10
+ATR_LENGTH     = 2
 SENSITIVITY    = 10.0
 VOL_MA_LEN     = 20
 TP1_PCT = 3.5
@@ -190,7 +190,7 @@ print("=== SMART SIGNAL PRO — TREND TRADER | 15хв MEXC ===")
 send_telegram(
     "🚀 Smart Signal Pro (15хв) запущено!\n"
     "📊 Біржа: MEXC\n"
-    "🎯 Пресет: Trend Trader (sensitivity=10, ATR=10)\n"
+    "🎯 Пресет: Trend Trader (sensitivity=10, ATR=2)\n"
     "Логіка: Smart Trail crossover + AI ★\n"
     f"Символів: {len(WATCHED_SYMBOLS)}"
 )
