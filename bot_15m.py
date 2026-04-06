@@ -10,7 +10,7 @@ USER_BALANCE = float(os.getenv("USER_BALANCE", "100.0"))
 
 INTERVAL       = "Min15"
 CHECK_INTERVAL = 10
-ATR_LENGTH     = 2
+ATR_LENGTH     = 14
 SENSITIVITY    = 10.0
 VOL_MA_LEN     = 20
 TP1_PCT = 3.5
